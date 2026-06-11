@@ -8,12 +8,15 @@ import pandas as pd
 import requests
 import yfinance as yf
 
-from config import COMMODITIES, CFTC_API_URL, CFTC_PAGE_SIZE, LOOKBACK_WEEKS
+from config import COMMODITIES, CFTC_PAGE_SIZE, LOOKBACK_WEEKS
 
 logger = logging.getLogger(__name__)
 
+# Correct endpoint: Disaggregated COT — Futures and Options Combined
+CFTC_API_URL = "https://publicreporting.cftc.gov/resource/kh3c-gbw2.json"
 
-# ── CFTC ─────────────────────────────────────────────────────────────────────
+
+# ── CFTC ──────────────────────────────────────────────────────────────────────
 
 def fetch_cot_data() -> dict[str, pd.DataFrame]:
     """
@@ -23,26 +26,30 @@ def fetch_cot_data() -> dict[str, pd.DataFrame]:
     Returns a dict keyed by display_name → DataFrame with columns:
         date, net_position (managed money long - short)
     """
-    cutoff = datetime.now(timezone.utc) - timedelta(weeks=LOOKBACK_WEEKS)
-    cutoff_str = cutoff.strftime("%Y-%m-%d")
+    cutoff     = datetime.now(timezone.utc) - timedelta(weeks=LOOKBACK_WEEKS)
+    cutoff_str = cutoff.strftime("%Y-%m-%d")   # text field — date string only
 
     results: dict[str, pd.DataFrame] = {}
 
     for commodity in COMMODITIES:
-        name        = commodity["display_name"]
-        cftc_name   = commodity["cftc_name"]
+        name      = commodity["display_name"]
+        cftc_name = commodity["cftc_name"]
 
         logger.info(f"Fetching COT for {name} ({cftc_name})")
 
-        rows = []
+        rows   = []
         offset = 0
 
         while True:
+            # futonly_or_combined = 'Combined' ensures futures + options rows only
+            where_clause = (
+                f"market_and_exchange_names='{cftc_name}' "
+                f"AND report_date_as_yyyy_mm_dd >= '{cutoff_str}' "
+                f"AND futonly_or_combined='Combined'"
+            )
+
             params = {
-                "$where": (
-                    f"market_and_exchange_names='{cftc_name}' "
-                    f"AND report_date_as_yyyy_mm_dd >= '{cutoff_str}'"
-                ),
+                "$where":  where_clause,
                 "$select": (
                     "report_date_as_yyyy_mm_dd,"
                     "m_money_positions_long_all,"
@@ -70,18 +77,23 @@ def fetch_cot_data() -> dict[str, pd.DataFrame]:
             if len(batch) < CFTC_PAGE_SIZE:
                 break
 
-            time.sleep(0.5)   # be polite to the API
+            time.sleep(0.3)
 
         if not rows:
-            logger.warning(f"No COT data returned for {name}")
+            logger.warning(f"No COT data returned for {name} — check cftc_name in config.py")
             continue
 
         df = pd.DataFrame(rows)
-        df["date"] = pd.to_datetime(df["report_date_as_yyyy_mm_dd"])
+        df["date"]  = pd.to_datetime(df["report_date_as_yyyy_mm_dd"])
         df["long"]  = pd.to_numeric(df["m_money_positions_long_all"],  errors="coerce")
         df["short"] = pd.to_numeric(df["m_money_positions_short_all"], errors="coerce")
         df["net_position"] = df["long"] - df["short"]
-        df = df[["date", "net_position"]].dropna().sort_values("date").reset_index(drop=True)
+        df = (
+            df[["date", "net_position"]]
+            .dropna()
+            .sort_values("date")
+            .reset_index(drop=True)
+        )
 
         results[name] = df
         logger.info(f"  → {len(df)} weeks of COT data for {name}")
@@ -98,7 +110,7 @@ def fetch_price_data() -> dict[str, pd.DataFrame]:
     Returns a dict keyed by display_name → DataFrame with columns:
         date, close
     """
-    cutoff = datetime.now(timezone.utc) - timedelta(weeks=LOOKBACK_WEEKS + 4)
+    cutoff    = datetime.now(timezone.utc) - timedelta(weeks=LOOKBACK_WEEKS + 4)
     start_str = cutoff.strftime("%Y-%m-%d")
 
     results: dict[str, pd.DataFrame] = {}
@@ -129,13 +141,44 @@ def fetch_price_data() -> dict[str, pd.DataFrame]:
         df.columns = ["close"]
         df.index.name = "date"
         df = df.reset_index()
-        df["date"] = pd.to_datetime(df["date"]).dt.tz_localize(None)
+        df["date"]  = pd.to_datetime(df["date"]).dt.tz_localize(None)
+        df["close"] = pd.to_numeric(df["close"], errors="coerce")
         df = df.dropna().sort_values("date").reset_index(drop=True)
 
         results[name] = df
         logger.info(f"  → {len(df)} weeks of price data for {name}")
 
     return results
+
+
+# ── Diagnostic helper ─────────────────────────────────────────────────────────
+
+def validate_cftc_names():
+    """
+    Utility: prints the exact market_and_exchange_names available in the
+    CFTC dataset for each commodity keyword. Run once to verify config.py names.
+
+    Usage:
+        python -c "from cot_collector import validate_cftc_names; validate_cftc_names()"
+    """
+    keywords = [
+        "SOYBEAN", "CORN", "WHEAT", "COTTON", "COFFEE", "SUGAR", "COCOA"
+    ]
+    for kw in keywords:
+        params = {
+            "$where":  f"market_and_exchange_names like '%{kw}%' AND futonly_or_combined='Combined'",
+            "$select": "market_and_exchange_names",
+            "$group":  "market_and_exchange_names",
+            "$limit":  20,
+        }
+        try:
+            resp = requests.get(CFTC_API_URL, params=params, timeout=15)
+            resp.raise_for_status()
+            for row in resp.json():
+                print(row["market_and_exchange_names"])
+        except Exception as e:
+            print(f"Error for {kw}: {e}")
+        print()
 
 
 # ── Combined ──────────────────────────────────────────────────────────────────
