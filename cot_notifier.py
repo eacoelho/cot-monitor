@@ -1,6 +1,7 @@
-# cot_notifier.py — Sends the chart image and analysis text via Telegram Bot API
+# cot_notifier.py — Sends one image + text message per commodity via Telegram
 
 import logging
+import time
 from pathlib import Path
 
 import requests
@@ -12,91 +13,61 @@ logger = logging.getLogger(__name__)
 BASE_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
 
 
-def _send_photo(image_path: str, caption: str = "") -> bool:
+def _send_photo_with_caption(image_path: str, caption: str) -> bool:
     """
-    Send a photo with an optional short caption (≤1024 chars).
-    For longer text, send the image first then a separate message.
+    Sends a photo with caption (≤1024 chars).
+    If caption exceeds limit, truncates safely at last newline.
     """
-    url = f"{BASE_URL}/sendPhoto"
+    if len(caption) > 1024:
+        caption = caption[:1020] + "…"
+
     try:
         with open(image_path, "rb") as img:
             response = requests.post(
-                url,
-                data={"chat_id": TELEGRAM_CHAT_ID, "caption": caption[:1024]},
+                f"{BASE_URL}/sendPhoto",
+                data={
+                    "chat_id":    TELEGRAM_CHAT_ID,
+                    "caption":    caption,
+                    "parse_mode": "Markdown",
+                },
                 files={"photo": img},
                 timeout=60,
             )
         response.raise_for_status()
-        logger.info("Photo sent successfully.")
         return True
     except Exception as e:
-        logger.error(f"Failed to send photo: {e}")
+        logger.error(f"Failed to send photo {image_path}: {e}")
         return False
 
 
-def _send_message(text: str) -> bool:
+def notify_all(chart_paths: dict[str, str], analyses: dict[str, str]) -> None:
     """
-    Send a plain text message with Markdown parse mode.
-    Automatically splits messages > 4096 chars (Telegram limit).
+    Sends one Telegram message (image + caption) per commodity.
+
+    Parameters
+    ----------
+    chart_paths : dict[display_name → file_path]  from cot_chart.generate_charts()
+    analyses    : dict[display_name → text]        from cot_analyst.generate_analysis()
     """
-    url    = f"{BASE_URL}/sendMessage"
-    chunks = _split_message(text, max_len=4096)
+    names = list(chart_paths.keys())
+    total = len(names)
 
-    for chunk in chunks:
-        try:
-            response = requests.post(
-                url,
-                json={
-                    "chat_id":    TELEGRAM_CHAT_ID,
-                    "text":       chunk,
-                    "parse_mode": "Markdown",
-                },
-                timeout=30,
-            )
-            response.raise_for_status()
-        except Exception as e:
-            logger.error(f"Failed to send message chunk: {e}")
-            return False
+    for idx, name in enumerate(names, start=1):
+        image_path = chart_paths.get(name)
+        text       = analyses.get(name, f"*{name}*\n⚠️ Análise indisponível.")
 
-    logger.info(f"Message sent ({len(chunks)} chunk(s)).")
-    return True
+        if not image_path or not Path(image_path).exists():
+            logger.error(f"[{idx}/{total}] Image not found for {name}: {image_path}")
+            continue
 
+        logger.info(f"[{idx}/{total}] Sending {name}...")
+        ok = _send_photo_with_caption(image_path, text)
 
-def _split_message(text: str, max_len: int = 4096) -> list[str]:
-    """Split long text at paragraph boundaries to stay within Telegram limits."""
-    if len(text) <= max_len:
-        return [text]
-
-    chunks = []
-    current = ""
-    for paragraph in text.split("\n\n"):
-        block = paragraph + "\n\n"
-        if len(current) + len(block) > max_len:
-            if current:
-                chunks.append(current.rstrip())
-            current = block
+        if ok:
+            logger.info(f"  → Sent successfully.")
         else:
-            current += block
+            logger.error(f"  → Failed.")
 
-    if current:
-        chunks.append(current.rstrip())
-
-    return chunks or [text[:max_len]]
-
-
-def notify(image_path: str, analysis_text: str) -> bool:
-    """
-    Full notification sequence:
-      1. Send the chart image (no caption — image speaks for itself)
-      2. Send the analysis text as a separate message
-
-    Returns True if both sends succeeded.
-    """
-    if not Path(image_path).exists():
-        logger.error(f"Image file not found: {image_path}")
-        return False
-
-    ok_photo   = _send_photo(image_path)
-    ok_message = _send_message(analysis_text)
-
-    return ok_photo and ok_message
+        # Avoid Telegram rate limit (30 messages/sec, but 1/sec is safe for bots)
+        if idx < total:
+            time.sleep(1.5)
