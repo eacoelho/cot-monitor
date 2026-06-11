@@ -1,0 +1,16 @@
+# cot-monitor.timer
+# Triggers every Friday at 21:30 UTC (after CFTC publishes at ~20:30 UTC)
+# Copy to /etc/systemd/system/cot-monitor.timer
+
+[Unit]
+Description=COT Monitor Weekly Timer
+Requires=cot-monitor.service
+
+[Timer]
+# Every Friday at 21:30 UTC
+OnCalendar=Fri *-*-* 21:30:00 UTC
+Persistent=true
+Unit=cot-monitor.service
+
+[Install]
+WantedBy=timers.target
