@@ -24,7 +24,7 @@ def fetch_cot_data() -> dict[str, pd.DataFrame]:
         date, net_position (managed money long - short)
     """
     cutoff = datetime.now(timezone.utc) - timedelta(weeks=LOOKBACK_WEEKS)
-    cutoff_str = cutoff.strftime("%Y-%m-%dT%H:%M:%S")
+    cutoff_str = cutoff.strftime("%Y-%m-%d")
 
     results: dict[str, pd.DataFrame] = {}
 
