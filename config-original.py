@@ -64,8 +64,8 @@ COMMODITIES = [
 ]
 
 # ── Chart output ──────────────────────────────────────────────────────────────
-CHART_DPI     = 150       # higher = sharper image on mobile
-CHART_FIGSIZE = (12, 5)   # width x height in inches per commodity chart
+CHART_DPI     = 180       # higher = sharper image on mobile
+CHART_FIGSIZE = (14, 7)   # width x height in inches per commodity chart
 
 # ── CFTC Socrata API ──────────────────────────────────────────────────────────
 # Disaggregated Commitments of Traders – Futures and Options Combined

@@ -17,17 +17,25 @@ from config import CHART_DPI, CHART_FIGSIZE
 
 logger = logging.getLogger(__name__)
 
-# ── Style constants ───────────────────────────────────────────────────────────
+# ── Colour palette ────────────────────────────────────────────────────────────
 BG_COLOR       = "#0D1117"
 PANEL_COLOR    = "#161B22"
 TEXT_COLOR     = "#E6EDF3"
 SUBTEXT_COLOR  = "#8B949E"
 GRID_COLOR     = "#21262D"
-ZERO_COLOR     = "#555E6A"
+ZERO_COLOR     = "#6E7681"
 POSITIVE_COLOR = "#2EA043"   # green  — net long area
 NEGATIVE_COLOR = "#DA3633"   # red    — net short area
-NET_LINE_COLOR = "#58A6FF"   # blue   — net position line (always distinct)
-PRICE_COLOR    = "#F0C030"   # yellow — price line (always distinct)
+NET_LINE_COLOR = "#58A6FF"   # blue   — net position line
+PRICE_COLOR    = "#F0C030"   # yellow — price line
+
+# ── Font sizes (tuned for smartphone readability) ─────────────────────────────
+FS_TITLE    = 17
+FS_LABEL    = 13
+FS_TICK     = 12
+FS_LEGEND   = 12
+FS_ANNOT    = 12
+FS_FOOTER   = 10
 
 OUTPUT_DIR = Path("charts")
 
@@ -45,9 +53,8 @@ def generate_charts(data: dict[str, dict]) -> dict[str, str]:
     """
     OUTPUT_DIR.mkdir(exist_ok=True)
 
-    # Force matplotlib to not inherit any theme
     plt.rcParams.update({
-        "axes.prop_cycle": plt.cycler(color=[NET_LINE_COLOR]),
+        "axes.prop_cycle":  plt.cycler(color=[NET_LINE_COLOR]),
         "figure.facecolor": BG_COLOR,
         "axes.facecolor":   PANEL_COLOR,
         "text.color":       TEXT_COLOR,
@@ -91,30 +98,31 @@ def generate_charts(data: dict[str, dict]) -> dict[str, str]:
         # ── Net position: filled area + line ──────────────────────────────────
         ax_net.fill_between(dates, net, 0,
                             where=(net >= 0),
-                            color=POSITIVE_COLOR, alpha=0.30, linewidth=0,
+                            color=POSITIVE_COLOR, alpha=0.35, linewidth=0,
                             zorder=2)
         ax_net.fill_between(dates, net, 0,
                             where=(net < 0),
-                            color=NEGATIVE_COLOR, alpha=0.30, linewidth=0,
+                            color=NEGATIVE_COLOR, alpha=0.35, linewidth=0,
                             zorder=2)
         ax_net.plot(dates, net,
-                    color=NET_LINE_COLOR,      # explicit blue — never conflicts
-                    linewidth=2.0, alpha=1.0,
+                    color=NET_LINE_COLOR,
+                    linewidth=2.8, alpha=1.0,
                     zorder=3, label="Net Position (Fundos)")
-        ax_net.axhline(0, color=ZERO_COLOR, linewidth=0.8,
+        ax_net.axhline(0, color=ZERO_COLOR, linewidth=1.2,
                        linestyle="--", zorder=1)
 
         # ── Price line ────────────────────────────────────────────────────────
         ax_price.plot(dates, price,
-                      color=PRICE_COLOR,       # explicit yellow — never conflicts
-                      linewidth=2.2, alpha=1.0,
+                      color=PRICE_COLOR,
+                      linewidth=2.8, alpha=1.0,
                       zorder=4, label="Preço")
 
         # ── Spines & ticks ────────────────────────────────────────────────────
         for ax in (ax_net, ax_price):
             for spine in ax.spines.values():
                 spine.set_edgecolor(GRID_COLOR)
-            ax.tick_params(labelsize=9)
+                spine.set_linewidth(1.2)
+            ax.tick_params(labelsize=FS_TICK, length=5, width=1.2, pad=6)
 
         ax_net.tick_params(axis="y",   colors=NET_LINE_COLOR)
         ax_net.tick_params(axis="x",   colors=TEXT_COLOR)
@@ -122,9 +130,9 @@ def generate_charts(data: dict[str, dict]) -> dict[str, str]:
 
         # ── Y-axis labels ─────────────────────────────────────────────────────
         ax_net.set_ylabel("Net Position (contratos)",
-                          color=NET_LINE_COLOR, fontsize=10, labelpad=8)
+                          color=NET_LINE_COLOR, fontsize=FS_LABEL, labelpad=10)
         ax_price.set_ylabel("Preço (contrato contínuo)",
-                             color=PRICE_COLOR,   fontsize=10, labelpad=8)
+                             color=PRICE_COLOR,   fontsize=FS_LABEL, labelpad=10)
 
         ax_net.yaxis.set_major_formatter(mticker.FuncFormatter(_fmt_thousands))
 
@@ -132,10 +140,10 @@ def generate_charts(data: dict[str, dict]) -> dict[str, str]:
         ax_net.xaxis.set_major_formatter(mdates.DateFormatter("%b/%y"))
         ax_net.xaxis.set_major_locator(mdates.MonthLocator(interval=2))
         plt.setp(ax_net.xaxis.get_majorticklabels(),
-                 rotation=30, ha="right", color=TEXT_COLOR, fontsize=9)
+                 rotation=30, ha="right", color=TEXT_COLOR, fontsize=FS_TICK)
 
         # ── Grid ──────────────────────────────────────────────────────────────
-        ax_net.grid(True, color=GRID_COLOR, linewidth=0.6,
+        ax_net.grid(True, color=GRID_COLOR, linewidth=0.8,
                     linestyle=":", zorder=0)
         ax_net.set_axisbelow(True)
 
@@ -144,25 +152,34 @@ def generate_charts(data: dict[str, dict]) -> dict[str, str]:
         latest_price = float(price[-1])
         sign = "+" if latest_net >= 0 else ""
 
+        _annot_style = dict(
+            boxstyle="round,pad=0.25",
+            facecolor=PANEL_COLOR,
+            edgecolor=GRID_COLOR,
+            alpha=0.90,
+        )
+
         ax_net.annotate(
             f"{sign}{latest_net/1000:.1f}k",
             xy=(dates[-1], latest_net),
-            xytext=(6, 0), textcoords="offset points",
-            color=NET_LINE_COLOR, fontsize=9, fontweight="bold", va="center",
+            xytext=(8, 0), textcoords="offset points",
+            color=NET_LINE_COLOR, fontsize=FS_ANNOT, fontweight="bold",
+            va="center", bbox=_annot_style,
         )
         ax_price.annotate(
             f"{latest_price:,.2f}",
             xy=(dates[-1], latest_price),
-            xytext=(6, 0), textcoords="offset points",
-            color=PRICE_COLOR, fontsize=9, fontweight="bold", va="center",
+            xytext=(8, 0), textcoords="offset points",
+            color=PRICE_COLOR, fontsize=FS_ANNOT, fontweight="bold",
+            va="center", bbox=_annot_style,
         )
 
         # ── Title ─────────────────────────────────────────────────────────────
         report_date = datetime.now(timezone.utc).strftime("%d/%m/%Y")
         ax_net.set_title(
-            f"{name}   ·   COT Managed Money   ·   {report_date}",
-            color=TEXT_COLOR, fontsize=13, fontweight="bold",
-            pad=10, loc="left",
+            f"{name}  ·  COT Managed Money  ·  {report_date}",
+            color=TEXT_COLOR, fontsize=FS_TITLE, fontweight="bold",
+            pad=14, loc="left",
         )
 
         # ── Legend ────────────────────────────────────────────────────────────
@@ -172,32 +189,34 @@ def generate_charts(data: dict[str, dict]) -> dict[str, str]:
             lines_net + lines_price,
             labels_net + labels_price,
             loc="upper left",
-            fontsize=8.5,
+            fontsize=FS_LEGEND,
             facecolor="#1C2128",
             edgecolor=GRID_COLOR,
             labelcolor=TEXT_COLOR,
-            framealpha=0.90,
+            framealpha=0.92,
+            handlelength=2.0,
+            handleheight=1.2,
         )
 
         # ── Footer ────────────────────────────────────────────────────────────
         fig.text(
-            0.5, -0.03,
+            0.5, -0.01,
             "Fonte: CFTC Disaggregated COT (Managed Money, Fut+Opt) · Yahoo Finance",
-            ha="center", fontsize=7.5, color=SUBTEXT_COLOR,
+            ha="center", fontsize=FS_FOOTER, color=SUBTEXT_COLOR,
         )
 
         # ── Save ──────────────────────────────────────────────────────────────
         safe_name   = name.replace(" ", "_").replace("/", "-")
         output_path = OUTPUT_DIR / f"cot_{safe_name}.png"
 
-        plt.tight_layout()
-        plt.savefig(output_path, dpi=CHART_DPI, bbox_inches="tight", facecolor=BG_COLOR)
+        plt.tight_layout(pad=1.8)
+        plt.savefig(output_path, dpi=CHART_DPI, bbox_inches="tight",
+                    facecolor=BG_COLOR, pad_inches=0.20)
         plt.close(fig)
 
         paths[name] = str(output_path)
         logger.info(f"Chart saved → {output_path}")
 
-    # Reset rcParams to avoid side effects if other modules use matplotlib
     plt.rcParams.update(plt.rcParamsDefault)
 
     return paths
