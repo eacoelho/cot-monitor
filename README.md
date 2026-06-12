@@ -212,4 +212,4 @@ Isso lista todos os valores de `market_and_exchange_names` disponíveis para cad
 
 ## Licença
 
-GNU General Public License v2
+MIT
