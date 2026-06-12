@@ -1,22 +1,36 @@
 # COT Monitor 🌾
 
-Automated weekly report that fetches **Commitment of Traders (COT)** data from the CFTC, combines it with commodity futures prices from Yahoo Finance, generates a one-page chart, and delivers an AI-written analysis in Brazilian Portuguese via Telegram.
+Pipeline semanal automatizado que busca o relatório **Commitment of Traders (COT)** do CFTC, combina com preços de futuros do Yahoo Finance, gera gráficos individuais por commodity e envia uma análise escrita por IA (Groq / Llama 3.3) em português brasileiro via Telegram.
 
 ---
 
-## What it does
+## O que faz
 
-Every Friday evening (after CFTC publishes the weekly report), the pipeline:
+Toda sexta-feira, após o CFTC publicar o relatório semanal, o pipeline:
 
-1. **Collects** managed-money net positions (futures + options) from the [CFTC Disaggregated COT](https://publicreporting.cftc.gov/) for the last 52 weeks
-2. **Collects** weekly closing prices for each commodity from Yahoo Finance
-3. **Generates** a 3×3 dark-themed PNG with net positions (area chart) and price (line) on a dual Y-axis per commodity
-4. **Analyses** the data via Groq (Llama 3.3) and produces a structured commentary in PT-BR
-5. **Sends** the image + text to a Telegram chat or channel
+1. **Aguarda** a publicação no endpoint do CFTC (polling a cada 5 min) — trata atrasos por feriados americanos ou shutdown do governo
+2. **Coleta** posições net de Managed Money (futuros + opções) via [CFTC Disaggregated COT API](https://publicreporting.cftc.gov/) — últimas 52 semanas
+3. **Coleta** preços semanais de fechamento de cada commodity via Yahoo Finance
+4. **Gera** um gráfico PNG individual por commodity com tema escuro, dual Y-axis (posição net + preço), otimizado para leitura em smartphone
+5. **Analisa** os dados via Groq (Llama 3.3) e produz um parágrafo de análise em PT-BR
+6. **Envia** imagem + texto para um chat ou canal do Telegram — uma mensagem por commodity
 
-### Covered commodities
+### Formato da mensagem no Telegram
 
-| Commodity | CFTC Market | Yahoo Finance |
+```
+*Soja*
+📊 Net Fundos: +45.200 contratos  (+3.100 na semana)
+💰 Preço: 1.042,50  (-1,8% na semana)
+
+🟢 Os fundos mantêm posição comprada expressiva, próxima ao
+topo histórico do período analisado. A aceleração recente das
+compras, combinada com a alta do preço, indica convergência
+entre o posicionamento especulativo e a tendência de mercado...
+```
+
+### Commodities monitoradas
+
+| Commodity | Mercado CFTC | Ticker Yahoo Finance |
 |---|---|---|
 | Soja | SOYBEANS – CBOT | ZS=F |
 | Milho | CORN – CBOT | ZC=F |
@@ -30,157 +44,172 @@ Every Friday evening (after CFTC publishes the weekly report), the pipeline:
 
 ---
 
-## Requirements
+## Requisitos
 
 - Python 3.11+
-- VPS or server with internet access (tested on Ubuntu 22.04 LTS)
-- Telegram bot token and chat/channel ID
-- Free [Groq API key](https://console.groq.com/)
+- VPS ou servidor com acesso à internet (testado em Ubuntu 22.04 LTS)
+- Token de bot do Telegram e ID do chat/canal
+- [Chave de API Groq](https://console.groq.com/) (plano gratuito disponível)
 
 ---
 
-## Installation
+## Instalação
 
 ```bash
-# 1. Clone the repository
+# 1. Clone o repositório
 git clone https://github.com/YOUR_USERNAME/cot-monitor.git
 cd cot-monitor
 
-# 2. Create and activate a virtual environment
+# 2. Crie e ative o ambiente virtual
 python3 -m venv venv
 source venv/bin/activate
 
-# 3. Install dependencies
+# 3. Instale as dependências
 pip install -r requirements.txt
 
-# 4. Configure credentials
-cp .env.example .env
-nano .env   # fill in your keys
+# 4. Configure as credenciais
+cp config-original.py config.py
+nano config.py
 ```
 
-### Configure credentials in `config.py`
-
-Open `config.py` and replace the placeholder values:
+### Configuração do `config.py`
 
 ```python
-TELEGRAM_BOT_TOKEN = "your_token_here"
-TELEGRAM_CHAT_ID   = "your_chat_id_here"
-GROQ_API_KEY       = "your_groq_key_here"
+# Telegram
+TELEGRAM_BOT_TOKEN = "seu_token_aqui"
+TELEGRAM_CHAT_ID   = "seu_chat_id_aqui"
+
+# Groq
+GROQ_API_KEY = "sua_chave_groq_aqui"
+GROQ_MODEL   = "llama-3.3-70b-versatile"
+
+# Janela de histórico
+LOOKBACK_WEEKS = 52   # ~12 meses
+
+# Parâmetros de gráfico
+CHART_DPI     = 180       # resolução da imagem
+CHART_FIGSIZE = (14, 8)   # largura × altura em polegadas
+
+# API do CFTC
+CFTC_API_URL   = "https://publicreporting.cftc.gov/resource/kh3c-gbw2.json"
+CFTC_PAGE_SIZE = 5000
 ```
 
-> **Security note**: If this repository is public, prefer loading credentials from environment variables. See the `.env.example` for reference and adapt `config.py` to use `os.getenv()`.
+> **Segurança**: se o repositório for público, prefira carregar credenciais via variáveis de ambiente e adapte `config.py` para usar `os.getenv()`.
 
 ---
 
-## Running manually
+## Execução manual
 
 ```bash
 source venv/bin/activate
 python cot_runner.py
 ```
 
-Logs are written to `logs/cot_monitor.log` and to stdout.
+Em execuções manuais (dia diferente de sexta-feira), o script pula a espera pelo CFTC e processa os dados mais recentes disponíveis.
+
+Logs são gravados em `logs/cot_monitor.log` e no stdout.
 
 ---
 
-## Automated weekly execution (systemd)
+## Execução automática semanal (systemd)
 
-This is the recommended approach for VPS deployment.
+Abordagem recomendada para VPS em produção.
 
 ```bash
-# 1. Edit the service file — replace YOUR_VPS_USER with your actual username
-nano cot-monitor.service
-
-# 2. Copy service and timer files
+# 1. Copie os arquivos de serviço
 sudo cp cot-monitor.service /etc/systemd/system/
 sudo cp cot-monitor.timer   /etc/systemd/system/
 
-# 3. Enable and start the timer
+# 2. Ative e inicie o timer
 sudo systemctl daemon-reload
 sudo systemctl enable --now cot-monitor.timer
 
-# 4. Verify
+# 3. Verifique
 sudo systemctl list-timers --all | grep cot
 ```
 
-The timer fires every **Friday at 21:30 UTC** (approximately one hour after the CFTC publishes, which occurs around 20:30 UTC / 15:30 ET).
+### Lógica de horário
 
-### Useful commands
+O timer dispara toda **sexta-feira às 19:25 UTC**. A partir daí, o script faz polling do endpoint do CFTC a cada 5 minutos até os dados aparecerem:
+
+| Cenário | Comportamento |
+|---|---|
+| Publicação normal (EDT/verão) | Dados às ~19:30 UTC → pipeline roda ~19:35 UTC |
+| Publicação normal (EST/inverno) | Dados às ~20:30 UTC → pipeline roda ~20:35 UTC |
+| Atraso (feriado, sobrecarga) | Continua tentando a cada 5 min |
+| Não publicado em 4 horas | Exit 0 com log explicativo; retoma na próxima sexta |
+
+### Comandos úteis
 
 ```bash
-# Check last run status
+# Status da última execução
 sudo systemctl status cot-monitor.service
 
-# View logs
+# Logs do serviço (systemd journal)
 journalctl -u cot-monitor.service -n 50 --no-pager
 
-# Run immediately (for testing)
+# Executar imediatamente (teste)
 sudo systemctl start cot-monitor.service
 
-# Tail live log file
+# Acompanhar log em tempo real
 tail -f logs/cot_monitor.log
 ```
 
 ---
 
-## Project structure
+## Estrutura do projeto
 
 ```
 cot-monitor/
-├── config.py            # All settings: credentials, commodities, chart params
-├── cot_collector.py     # CFTC API + Yahoo Finance data collection
-├── cot_chart.py         # Matplotlib 3×3 PNG generation
-├── cot_analyst.py       # Groq LLM prompt builder + analysis
-├── cot_notifier.py      # Telegram Bot API delivery
-├── cot_runner.py        # Pipeline orchestrator (entry point)
-├── requirements.txt
-├── cot-monitor.service  # systemd service unit
-├── cot-monitor.timer    # systemd timer unit (weekly Friday)
-├── .env.example         # Credential template
-├── .gitignore
+├── config.py             # Credenciais, commodities e parâmetros (não versionado)
+├── config-original.py    # Template de configuração (copie para config.py)
+├── cot_runner.py         # Orquestrador do pipeline (entry point)
+├── cot_collector.py      # Coleta de dados: CFTC API + Yahoo Finance
+├── cot_chart.py          # Geração de gráficos PNG por commodity
+├── cot_analyst.py        # Análise via Groq LLM (cabeçalho + parágrafo IA)
+├── cot_notifier.py       # Envio via Telegram Bot API
+├── requirements.txt      # Dependências Python
+├── cot-monitor.service   # Unit systemd (serviço)
+├── cot-monitor.timer     # Unit systemd (timer semanal sexta 19:25 UTC)
+├── logs/                 # Logs de execução (criado automaticamente)
+├── charts/               # PNGs gerados (criado automaticamente)
 └── README.md
 ```
 
 ---
 
-## Data sources
+## Fontes de dados
 
-| Source | Data | Access |
+| Fonte | Dado | Acesso |
 |---|---|---|
-| [CFTC Socrata API](https://publicreporting.cftc.gov/resource/jun7-fc8e.json) | Disaggregated COT – Managed Money | Free, no auth required |
-| [Yahoo Finance (yfinance)](https://github.com/ranaroussi/yfinance) | Continuous futures prices | Free, no auth required |
-| [Groq](https://console.groq.com/) | Llama 3.3 inference | Free tier available |
-| [Telegram Bot API](https://core.telegram.org/bots/api) | Message delivery | Free |
+| [CFTC Socrata API](https://publicreporting.cftc.gov/resource/kh3c-gbw2.json) | Disaggregated COT – Managed Money (Fut+Opt) | Gratuito, sem autenticação |
+| [Yahoo Finance (yfinance)](https://github.com/ranaroussi/yfinance) | Preços semanais de futuros contínuos | Gratuito, sem autenticação |
+| [Groq](https://console.groq.com/) | Inferência Llama 3.3 70B | Plano gratuito disponível |
+| [Telegram Bot API](https://core.telegram.org/bots/api) | Entrega de mensagens | Gratuito |
 
 ---
 
-## Known limitations
+## Diagnóstico de nomes CFTC
 
-- **Yahoo Finance** does not guarantee data continuity for futures tickers. If a ticker stops returning data, update `yf_ticker` in `config.py`.
-- **CFTC API** occasionally returns stale or delayed data around holidays. The pipeline logs warnings but does not block execution.
-- **Groq free tier** has rate limits. The analyst module includes retry logic with exponential backoff.
-- The one-page image is generated at 150 DPI (~3000×3300 px). Telegram compresses images; if quality degrades, increase `CHART_DPI` in `config.py` or send as a document instead (requires a minor change in `cot_notifier.py`).
+Se uma commodity não retornar dados, use o utilitário de validação para verificar o nome exato no dataset:
 
----
-
-## Sending as document instead of compressed image
-
-In `cot_notifier.py`, replace `sendPhoto` with `sendDocument`:
-
-```python
-# In _send_photo(), change:
-response = requests.post(
-    f"{BASE_URL}/sendDocument",
-    data={"chat_id": TELEGRAM_CHAT_ID},
-    files={"document": img},
-    timeout=60,
-)
+```bash
+python -c "from cot_collector import validate_cftc_names; validate_cftc_names()"
 ```
 
-This preserves full resolution but requires the recipient to open it manually.
+Isso lista todos os valores de `market_and_exchange_names` disponíveis para cada commodity. Atualize `cftc_name` em `config.py` se necessário.
 
 ---
 
-## License
+## Limitações conhecidas
 
-MIT
+- **Yahoo Finance** não garante continuidade para tickers de futuros. Se um ticker parar de retornar dados, atualize `yf_ticker` em `config.py`.
+- **Groq free tier** possui limites de taxa. O módulo de análise inclui retry com backoff exponencial (3 tentativas, até 15s de espera).
+- **Telegram comprime imagens** enviadas via `sendPhoto`. Se a qualidade degradar no destinatário, aumente `CHART_DPI` em `config.py`.
+
+---
+
+## Licença
+
+GNU General Public License v2

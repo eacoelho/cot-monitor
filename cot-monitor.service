@@ -9,9 +9,9 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-User=YOUR_VPS_USER
-WorkingDirectory=/home/YOUR_VPS_USER/cot-monitor
-ExecStart=/home/YOUR_VPS_USER/cot-monitor/venv/bin/python cot_runner.py
+User=root
+WorkingDirectory=/home/cot-monitor
+ExecStart=/home/cot-monitor/venv/bin/python cot_runner.py
 StandardOutput=journal
 StandardError=journal
 
