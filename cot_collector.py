@@ -8,12 +8,9 @@ import pandas as pd
 import requests
 import yfinance as yf
 
-from config import COMMODITIES, CFTC_PAGE_SIZE, LOOKBACK_WEEKS
+from config import CFTC_API_URL, CFTC_PAGE_SIZE, COMMODITIES, LOOKBACK_WEEKS
 
 logger = logging.getLogger(__name__)
-
-# Correct endpoint: Disaggregated COT — Futures and Options Combined
-CFTC_API_URL = "https://publicreporting.cftc.gov/resource/kh3c-gbw2.json"
 
 
 # ── CFTC ──────────────────────────────────────────────────────────────────────

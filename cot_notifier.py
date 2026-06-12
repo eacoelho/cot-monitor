@@ -14,29 +14,31 @@ BASE_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
 
 
 def _send_photo_with_caption(image_path: str, caption: str) -> bool:
-    """
-    Sends a photo with caption (≤1024 chars).
-    If caption exceeds limit, truncates safely at last newline.
-    """
+    """Sends a photo with caption (Telegram limit: 1024 chars)."""
     if len(caption) > 1024:
         caption = caption[:1020] + "…"
 
     try:
-        with open(image_path, "rb") as img:
-            response = requests.post(
-                f"{BASE_URL}/sendPhoto",
-                data={
-                    "chat_id":    TELEGRAM_CHAT_ID,
-                    "caption":    caption,
-                    "parse_mode": "Markdown",
-                },
-                files={"photo": img},
-                timeout=60,
-            )
+        img_bytes = open(image_path, "rb").read()
+    except OSError as e:
+        logger.error(f"Cannot read image {image_path}: {e}")
+        return False
+
+    try:
+        response = requests.post(
+            f"{BASE_URL}/sendPhoto",
+            data={
+                "chat_id":    TELEGRAM_CHAT_ID,
+                "caption":    caption,
+                "parse_mode": "Markdown",
+            },
+            files={"photo": (Path(image_path).name, img_bytes, "image/png")},
+            timeout=60,
+        )
         response.raise_for_status()
         return True
     except Exception as e:
-        logger.error(f"Failed to send photo {image_path}: {e}")
+        logger.error(f"Telegram request failed for {image_path}: {e}")
         return False
 
 

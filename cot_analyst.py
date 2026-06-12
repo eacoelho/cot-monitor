@@ -6,11 +6,18 @@ import time
 import pandas as pd
 from groq import Groq
 
-from config import COMMODITIES, GROQ_API_KEY, GROQ_MODEL
+from config import GROQ_API_KEY, GROQ_MODEL
 
 logger = logging.getLogger(__name__)
 
-client = Groq(api_key=GROQ_API_KEY)
+_groq_client: Groq | None = None
+
+
+def _get_client() -> Groq:
+    global _groq_client
+    if _groq_client is None:
+        _groq_client = Groq(api_key=GROQ_API_KEY)
+    return _groq_client
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -19,7 +26,10 @@ def _pct_change(series: pd.Series) -> float:
     clean = series.dropna()
     if len(clean) < 2:
         return 0.0
-    return ((clean.iloc[-1] - clean.iloc[0]) / abs(clean.iloc[0])) * 100
+    base = clean.iloc[0]
+    if base == 0:
+        return 0.0
+    return ((clean.iloc[-1] - base) / abs(base)) * 100
 
 
 def _build_data_block(name: str, cot_df: pd.DataFrame, price_df: pd.DataFrame) -> str:
@@ -56,7 +66,7 @@ def _build_data_block(name: str, cot_df: pd.DataFrame, price_df: pd.DataFrame) -
 def _call_groq(prompt: str, retries: int = 3) -> str:
     for attempt in range(retries):
         try:
-            response = client.chat.completions.create(
+            response = _get_client().chat.completions.create(
                 model=GROQ_MODEL,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.4,
@@ -83,17 +93,13 @@ def generate_analysis(data: dict[str, dict]) -> dict[str, str]:
     """
     results = {}
 
-    for commodity in COMMODITIES:
-        name = commodity["display_name"]
-        if name not in data:
-            continue
-
+    for name, commodity_data in data.items():
         logger.info(f"Generating analysis for {name}...")
 
         data_block = _build_data_block(
             name,
-            data[name]["cot"],
-            data[name]["price"],
+            commodity_data["cot"],
+            commodity_data["price"],
         )
 
         prompt = f"""Você é um analista sênior de mercados agrícolas. Com base nos dados abaixo do relatório COT (CFTC), referentes à posição de fundos gestores (Managed Money) em futuros e opções, escreva um parágrafo de análise em português brasileiro para envio via Telegram.
