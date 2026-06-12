@@ -30,12 +30,12 @@ NET_LINE_COLOR = "#58A6FF"   # blue   — net position line
 PRICE_COLOR    = "#F0C030"   # yellow — price line
 
 # ── Font sizes (tuned for smartphone readability) ─────────────────────────────
-FS_TITLE    = 17
-FS_LABEL    = 13
-FS_TICK     = 12
-FS_LEGEND   = 12
-FS_ANNOT    = 12
-FS_FOOTER   = 10
+FS_TITLE    = 20
+FS_LABEL    = 15
+FS_TICK     = 14
+FS_LEGEND   = 14
+FS_ANNOT    = 14
+FS_FOOTER   = 12
 
 OUTPUT_DIR = Path("charts")
 
@@ -138,9 +138,9 @@ def generate_charts(data: dict[str, dict]) -> dict[str, str]:
 
         # ── X-axis ────────────────────────────────────────────────────────────
         ax_net.xaxis.set_major_formatter(mdates.DateFormatter("%b/%y"))
-        ax_net.xaxis.set_major_locator(mdates.MonthLocator(interval=2))
+        ax_net.xaxis.set_major_locator(mdates.MonthLocator(interval=1))
         plt.setp(ax_net.xaxis.get_majorticklabels(),
-                 rotation=30, ha="right", color=TEXT_COLOR, fontsize=FS_TICK)
+                 rotation=90, ha="center", va="top", color=TEXT_COLOR, fontsize=FS_TICK)
 
         # ── Grid ──────────────────────────────────────────────────────────────
         ax_net.grid(True, color=GRID_COLOR, linewidth=0.8,

@@ -20,7 +20,47 @@ def _get_client() -> Groq:
     return _groq_client
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# ── Number formatting helpers ─────────────────────────────────────────────────
+
+def _br(value: float, decimals: int = 0) -> str:
+    """Absolute value with Brazilian separators: 45.200  or  1.042,50"""
+    s = f"{abs(value):,.{decimals}f}"
+    return s.replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def _signed_br(value: float, decimals: int = 0) -> str:
+    """Signed value with Brazilian separators: +45.200  or  -1,8"""
+    sign = "+" if value >= 0 else "-"
+    return f"{sign}{_br(abs(value), decimals)}"
+
+
+# ── Header block (deterministic, shown before the AI analysis) ────────────────
+
+def _build_header(name: str, cot_df: pd.DataFrame, price_df: pd.DataFrame) -> str:
+    """
+    Returns a 3-line summary block:
+        *Soja*
+        📊 Net Fundos: +45.200 contratos  (+3.100 na semana)
+        💰 Preço: 1.042,50  (-1,8% na semana)
+    """
+    net   = cot_df["net_position"]
+    price = price_df["close"]
+
+    latest_net = net.iloc[-1]
+    net_change = (latest_net - net.iloc[-2]) if len(net) >= 2 else 0.0
+
+    latest_price = price.iloc[-1]
+    prior_price  = price.iloc[-2] if len(price) >= 2 else latest_price
+    price_pct    = ((latest_price - prior_price) / abs(prior_price) * 100) if prior_price != 0 else 0.0
+
+    return (
+        f"*{name}*\n"
+        f"📊 Net Fundos: {_signed_br(latest_net)} contratos  ({_signed_br(net_change)} na semana)\n"
+        f"💰 Preço: {_br(latest_price, 2)}  ({_signed_br(price_pct, 1)}% na semana)"
+    )
+
+
+# ── Data block for the AI prompt ──────────────────────────────────────────────
 
 def _pct_change(series: pd.Series) -> float:
     clean = series.dropna()
@@ -85,22 +125,17 @@ def _call_groq(prompt: str, retries: int = 3) -> str:
 
 def generate_analysis(data: dict[str, dict]) -> dict[str, str]:
     """
-    Generates one analysis text per commodity.
-
-    Returns
-    -------
-    dict[display_name → analysis_text]
+    Returns dict[display_name → full message text].
+    Each message = deterministic header + AI analysis paragraph.
     """
     results = {}
 
     for name, commodity_data in data.items():
         logger.info(f"Generating analysis for {name}...")
 
-        data_block = _build_data_block(
-            name,
-            commodity_data["cot"],
-            commodity_data["price"],
-        )
+        header = _build_header(name, commodity_data["cot"], commodity_data["price"])
+
+        data_block = _build_data_block(name, commodity_data["cot"], commodity_data["price"])
 
         prompt = f"""Você é um analista sênior de mercados agrícolas. Com base nos dados abaixo do relatório COT (CFTC), referentes à posição de fundos gestores (Managed Money) em futuros e opções, escreva um parágrafo de análise em português brasileiro para envio via Telegram.
 
@@ -111,15 +146,15 @@ INSTRUÇÕES:
 - Relacione a posição dos fundos com o comportamento do preço: convergência ou divergência.
 - Não repita os números brutos — interprete-os.
 - Use um emoji no início: 🟢 posição/tendência positiva, 🔴 negativa, 🟡 neutra/mista.
-- Inicie com o nome da commodity em negrito Telegram: *{name}*
+- NÃO inclua o nome da commodity no texto — ele já aparece no cabeçalho.
 
 DADOS:
 {data_block}
 
 Escreva apenas o parágrafo, sem títulos adicionais ou comentários."""
 
-        text = _call_groq(prompt)
-        results[name] = text
+        analysis = _call_groq(prompt)
+        results[name] = f"{header}\n\n{analysis}"
         logger.info(f"  → Analysis done for {name}")
 
         time.sleep(1.0)   # avoid Groq rate limit across 9 sequential calls
