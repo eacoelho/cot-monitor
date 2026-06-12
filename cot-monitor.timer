@@ -1,5 +1,14 @@
 # cot-monitor.timer
-# Triggers every Friday at 21:30 UTC (after CFTC publishes at ~20:30 UTC)
+# Fires every Friday at 19:25 UTC, just before the earliest possible CFTC release.
+#
+# CFTC publishes at 3:30 PM Eastern:
+#   EDT (summer, UTC-4) → 19:30 UTC
+#   EST (winter, UTC-5) → 20:30 UTC
+#
+# The script polls every 5 min and proceeds as soon as data appears,
+# so "5 minutes after publication" is the effective runtime in the normal case.
+# A 4-hour timeout handles delays from US federal holidays or shutdowns.
+#
 # Copy to /etc/systemd/system/cot-monitor.timer
 
 [Unit]
@@ -7,8 +16,7 @@ Description=COT Monitor Weekly Timer
 Requires=cot-monitor.service
 
 [Timer]
-# Every Friday at 21:30 UTC
-OnCalendar=Fri *-*-* 21:30:00 UTC
+OnCalendar=Fri *-*-* 19:25:00 UTC
 Persistent=true
 Unit=cot-monitor.service
 

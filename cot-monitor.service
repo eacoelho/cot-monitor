@@ -15,5 +15,9 @@ ExecStart=/home/YOUR_VPS_USER/cot-monitor/venv/bin/python cot_runner.py
 StandardOutput=journal
 StandardError=journal
 
+# The script polls for CFTC data for up to 4 hours before giving up.
+# This timeout must exceed MAX_WAIT_SEC (14400s) + pipeline runtime (~5 min).
+TimeoutStartSec=18000
+
 [Install]
 WantedBy=multi-user.target
