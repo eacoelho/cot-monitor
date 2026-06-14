@@ -42,6 +42,24 @@ def _send_photo_with_caption(image_path: str, caption: str) -> bool:
         return False
 
 
+def send_summary(text: str) -> None:
+    """Sends the final summary as a plain text message (no image)."""
+    try:
+        response = requests.post(
+            f"{BASE_URL}/sendMessage",
+            data={
+                "chat_id":    TELEGRAM_CHAT_ID,
+                "text":       text,
+                "parse_mode": "Markdown",
+            },
+            timeout=30,
+        )
+        response.raise_for_status()
+        logger.info("Summary message sent.")
+    except Exception as e:
+        logger.error(f"Failed to send summary: {e}")
+
+
 def notify_all(chart_paths: dict[str, str], analyses: dict[str, str]) -> None:
     """
     Sends one Telegram message (image + caption) per commodity.

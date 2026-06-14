@@ -103,6 +103,21 @@ def _build_data_block(name: str, cot_df: pd.DataFrame, price_df: pd.DataFrame) -
     )
 
 
+def build_summary(data: dict[str, dict]) -> str:
+    """
+    Builds the final summary message with all commodities.
+    Sent as the last Telegram message after the individual charts.
+    """
+    title = "*💴 Posição de Fundos - Commitment of Traders*"
+
+    blocks = [
+        _build_header(name, commodity_data["cot"], commodity_data["price"])
+        for name, commodity_data in data.items()
+    ]
+
+    return title + "\n\n" + "\n\n".join(blocks) + "\n\nFonte: CFTC"
+
+
 def _call_groq(prompt: str, retries: int = 3) -> str:
     for attempt in range(retries):
         try:

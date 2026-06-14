@@ -8,10 +8,10 @@ import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-from cot_analyst import generate_analysis
+from cot_analyst import build_summary, generate_analysis
 from cot_chart import generate_charts
 from cot_collector import collect_all
-from cot_notifier import notify_all
+from cot_notifier import notify_all, send_summary
 from config import CFTC_API_URL
 
 # ── Logging ───────────────────────────────────────────────────────────────────
@@ -163,6 +163,12 @@ def run():
     except Exception as e:
         logger.exception(f"Notification failed: {e}")
         sys.exit(1)
+
+    # 5 — Send summary (one text message with all commodities)
+    try:
+        send_summary(build_summary(data))
+    except Exception as e:
+        logger.exception(f"Summary message failed: {e}")
 
     elapsed = (datetime.now() - start).total_seconds()
     logger.info(f"Pipeline completed in {elapsed:.1f}s — {len(chart_paths)} commodities sent.")
